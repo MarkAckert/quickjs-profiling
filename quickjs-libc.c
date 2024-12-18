@@ -23,29 +23,68 @@
  * THE SOFTWARE.
  */
 #include <stdlib.h>
+#ifndef _MSC_VER  /* WINDOWS - JOENemo Windows */
+#include <stdio.h>
+#else 
+#include "winstdio.h"
+#endif
 #include <stdio.h>
 #include <stdarg.h>
 #include <inttypes.h>
 #include <string.h>
 #include <assert.h>
+#ifndef _MSC_VER      /* JOENemo */
 #include <unistd.h>
+#endif
 #include <errno.h>
 #include <fcntl.h>
+#ifndef _MSC_VER  /* WINDOWS - JOENemo */
 #include <sys/time.h>
+#else
+#include <winsock.h>
+#endif  /* WINDOWS */
+
+#ifndef _MSC_VER /* JOENemo */
 #include <time.h>
+#else
+#include "wintime.h"
+#endif
+
 #include <signal.h>
 #include <limits.h>
+
+#ifdef _MSC_VER /* JOENemo */
+#define PATH_MAX 256  /* JOENemo, shouldn't this be in limits ? */
+#endif
+
 #include <sys/stat.h>
+#ifdef _MSC_VER      /* JOE */
+#include "windirent.h"
+#else
 #include <dirent.h>
+#endif
 #if defined(_WIN32)
 #include <windows.h>
 #include <conio.h>
-#include <utime.h>
+/* #include <utime.h> */
+#include <sys/utime.h> /* JOENemo, MS Doc said sys/utime, not just <utime.h> */
 #else
 #include <dlfcn.h>
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
+
+#ifdef __MVS__ /* JOENemo */
+#include "porting/polyfill.h"
+#define PATH_MAX _POSIX_PATH_MAX
+extern char **environ;
+#endif
+
+#ifdef __MVS__ /* JOENemo */
+#include "porting/polyfill.h"
+#define PATH_MAX _POSIX_PATH_MAX
+extern char **environ;
+#endif
 
 #if defined(__FreeBSD__)
 extern char **environ;
@@ -70,9 +109,20 @@ typedef sig_t sighandler_t;
 #endif
 
 #ifdef USE_WORKER
+#ifdef __MVS__ /* JOENemo */
+#define __SUSV3_THR 1 /* this should go, I think */
+#endif
+
+#ifdef _MSC_VER
+#include "winpthread.h"  /* JOE */
+#else 
 #include <pthread.h>
+#endif
+
+#ifndef __MVS__ /* JOENemo */
 #include <stdatomic.h>
 #endif
+#endif /* USE_WORKER */
 
 #include "cutils.h"
 #include "list.h"
@@ -1885,6 +1935,13 @@ static JSValue js_os_setReadHandler(JSContext *ctx, JSValueConst this_val,
 
     if (JS_ToInt32(ctx, &fd, argv[0]))
         return JS_EXCEPTION;
+
+#ifdef QASCII    /* JOENemo */
+    if (fd == STDIN_FILENO){
+      convertOpenStream(fd,1047);  /* JOENemo hacked assumption that type-in is occuring in 1047 */
+    }
+#endif
+
     func = argv[1];
     if (JS_IsNull(func)) {
         rh = find_rh(ts, fd);
@@ -1940,7 +1997,7 @@ static void os_signal_handler(int sig_num)
     os_pending_signals |= ((uint64_t)1 << sig_num);
 }
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__MVS__) /* JOENemo */
 typedef void (*sighandler_t)(int sig_num);
 #endif
 
@@ -2593,7 +2650,7 @@ static JSValue js_os_stat(JSContext *ctx, JSValueConst this_val,
                                   JS_NewInt64(ctx, st.st_blocks),
                                   JS_PROP_C_W_E);
 #endif
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__MVS__) /* JOENemo */
         JS_DefinePropertyValueStr(ctx, obj, "atime",
                                   JS_NewInt64(ctx, (int64_t)st.st_atime * 1000),
                                   JS_PROP_C_W_E);
@@ -2686,6 +2743,20 @@ static JSValue js_os_sleep(JSContext *ctx, JSValueConst this_val,
             delay = INT32_MAX;
         Sleep(delay);
         ret = 0;
+    }
+#elif defined(__MVS__)
+    {
+      // NOTE: In z/OS 2.4 and under, nanosleep doesn't exist.
+      //       It was added in 2.5.
+      // TODO: When 2.4 is no longer supported by us, switch this to use nanosleep
+      // HACK: Due to lack of nanosleep, we sleep or usleep. With sleep, we lose granularity.
+      if (delay >= 1000) {
+        int uStatus = sleep(delay/1000);
+        ret = (uStatus ? errno : 0);
+      } else {
+        int uStatus = usleep(delay*1000);  /* JOENemo milli->micro */
+        ret = (uStatus ? errno : 0);
+      }
     }
 #else
     {
@@ -3232,7 +3303,11 @@ static JSContext *(*js_worker_new_context_func)(JSRuntime *rt);
 
 static int atomic_add_int(int *ptr, int v)
 {
+#ifdef __MVS__
+    return atomicIncrementI32(ptr,v); /* JOENemo */
+#else
     return atomic_fetch_add((_Atomic(uint32_t) *)ptr, v) + v;
+#endif
 }
 
 /* shared array buffer allocator */
@@ -3659,6 +3734,8 @@ void js_std_set_worker_new_context_func(JSContext *(*func)(JSRuntime *rt))
 
 #if defined(_WIN32)
 #define OS_PLATFORM "win32"
+#elif defined(__MVS__) /* JOENemo */
+#define OS_PLATFORM "zos"
 #elif defined(__APPLE__)
 #define OS_PLATFORM "darwin"
 #elif defined(EMSCRIPTEN)

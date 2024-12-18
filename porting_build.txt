@@ -1,0 +1,86 @@
+QuickJS compiles well on many platorms using GCC or Clang.  Linux and
+BSD distros do this well with exactly the instructions in the primary
+QuickJS repo.  ZOS and Windows are OS's that are more challenging for
+porting.  This repo is a minor variant on QuickJS that uses Clang/LLVM
+as its multiplatform compile/link tool.
+
+----------------------------------------------------------------------
+
+Building on Z with Clang-13 Beta
+
+Clang-13 is in beta on ZOS but works very on C11 sources.
+
+The primary issues on ZOS are accounting for the native character set
+(EBCDIC) and filling gaps in the C11 standard libraries.  The lattr
+will probably vanish, but the former will persist indefinitely.
+
+Please set a Environment Variable for Clang
+
+  export CLANG="<somePath>/openxl_beta2"
+
+Git clone to quickjs to some repo and cd there.
+
+1) Make the compiler
+
+${CLANG}/bin/clang-13 -DCONFIG_VERSION=\"2021-03-27\" -D__SUSV3_THR=1 -D_OPEN_THREADS -D_XOPEN_SOURCE=600 -D_LARGE_TIME_API -D_OPEN_SYS_FILE_EXT=1 -fzos-le-char-mode=ascii -m64 -o qjsc qjsc.c quickjs.c cutils.c quickjs-libc.c  libbf.c libregexp.c libunicode.c porting/polyfill.c porting/debugutil.c
+
+2) Compile repl
+qjsc -c -o repl.c -m repl.js
+
+3) build the interpreter 
+
+${CLANG}/bin/clang-13 -DCONFIG_VERSION=\"2021-03-27\" -D__SUSV3_THR=1 -D_OPEN_THREADS -D_XOPEN_SOURCE=600 -D_LARGE_TIME_API -D_OPEN_SYS_FILE_EXT=1 -fzos-le-char-mode=ascii -m64 -o qjs qjs.c repl.c quickjs.c cutils.c quickjs-libc.c  libbf.c libregexp.c libunicode.c porting/polyfill.c porting/debugutil.c
+
+4) Test it by running qjs.
+
+5) Building libraries for embedding
+
+<TBD>
+
+--------------------------------------------------------------------------
+
+Building on Z with xlclang 2.4.1
+
+xlclang is the hybrid Clang-front-end-IBM-Toronto-backend
+implementation of C/C++ that is currently GA on ZOS 2.4 and later.  It
+does not support 128 bit integers but otherwise seems provides what
+QuickJS needs excluding BIGNUM support.  Fortunately very little
+JavaScript code uses the new bignum (e.g. 12345n) type numbers yet.
+
+xlclang also does not support stdatomic directly, however, the atomic
+support for C++ seemed pretty good, so polyfill.h/c now expose a
+subset of <stdatomic.h>.  A full implemention could probably be made
+with a few more days effort.
+
+1) xlclang -q64 -qascii -DCONFIG_VERSION=\"2021-03-27\" -D_OPEN_SYS_FILE_EXT=1 -D_XOPEN_SOURCE=600 -D_OPEN_THREADS=1 -DSUBPOOL=132 "-Wc,float(ieee),longname,langlvl(extc99),gonum,goff,ASM,asmlib('CEE.SCEEMAC','SYS1.MACLIB','SYS1.MODGEN')" "-Wl,ac=1" -I ../h -Wbitwise-op-parentheses -o qjsc qjsc.c quickjs.c cutils.c quickjs-libc.c libregexp.c libunicode.c porting/polyfill.c
+
+2) Compile repl
+
+qjsc -c -o repl.c -m repl.js
+
+3) build the interpreter
+
+xlclang -q64 -qascii -DCONFIG_VERSION=\"2021-03-27\" -D_OPEN_SYS_FILE_EXT=1 -D_XOPEN_SOURCE=600 -D_OPEN_THREADS=1 -DSUBPOOL=132 "-Wc,float(ieee),longname,langlvl(extc99),gonum,goff,ASM,asmlib('CEE.SCEEMAC','SYS1.MACLIB','SYS1.MODGEN')" "-Wl,ac=1" -I ../h -Wbitwise-op-parentheses -o qjs qjs.c repl.c quickjs.c cutils.c quickjs-libc.c libregexp.c libunicode.c porting/polyfill.c porting/debugutil.c
+
+4,5) as above with Clang-13 build.
+
+
+--------------------------------------------------------------------------
+
+Building on Windows
+
+0) Get Clang/LLVM Version 12 or later. 
+0.1) Get Windows 10 or Later.  It came out into 2015.  That shouldn't be too hard. :P
+
+1) Build the QJSC compiler first
+
+clang -I porting -DCONFIG_VERSION=\"2021-03-27\" -D_CRT_SECURE_NO_WARNINGS -Wdeprecated-declarations --rtlib=compiler-rt -o qjsc.exe qjsc.c quickjs.c cutils.c quickjs-libc.c  libbf.c libregexp.c libunicode.c porting/winpthread.c porting/wintime.c porting/windirent.c porting/winunistd.c
+
+2) Compile the repl
+
+qjsc -c -o repl.c -m repl.js
+
+3) build the interpreter
+
+clang -I porting -DCONFIG_VERSION=\"2021-03-27\" -D_CRT_SECURE_NO_WARNINGS -Wdeprecated-declarations --rtlib=compiler-rt -o qjs.exe qjs.c quickjs.c cutils.c quickjs-libc.c  libbf.c libregexp.c libunicode.c porting/winpthread.c porting/wintime.c porting/windirent.c porting/winunistd.c repl.c
+

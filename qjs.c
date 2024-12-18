@@ -28,7 +28,9 @@
 #include <inttypes.h>
 #include <string.h>
 #include <assert.h>
+#ifndef _MSC_VER      /* JOENemo */
 #include <unistd.h>
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <time.h>
@@ -36,6 +38,8 @@
 #include <malloc/malloc.h>
 #elif defined(__linux__) || defined(__GLIBC__)
 #include <malloc.h>
+#elif defined(__MVS__)
+#include "porting/polyfill.h"
 #elif defined(__FreeBSD__)
 #include <malloc_np.h>
 #endif
