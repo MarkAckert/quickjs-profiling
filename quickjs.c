@@ -1197,7 +1197,6 @@ static char *get_id_from_opcode(OPCodeEnum op)
 
 }
 
-#ifdef CONFIG_BIGNUM
 /* function pointers are used for numeric operations so that it is
    possible to remove some numeric types */
 typedef struct {
@@ -1215,7 +1214,6 @@ typedef struct {
                                     int64_t exponent);
     int (*mul_pow10)(JSContext *ctx, JSValue *sp);
 } JSNumericOperations;
-#endif 
 
 struct JSRuntime {
     JSMallocFunctions mf;
@@ -44462,7 +44460,7 @@ static const JSCFunctionListEntry js_math_obj[] = {
 static int getTimezoneOffset(int64_t time) {
 #if defined(__MVS__) /* JOENemo */
     return 0;
-#endif
+#else
     time_t ti;
     int res;
 
@@ -44488,7 +44486,7 @@ static int getTimezoneOffset(int64_t time) {
         }
     }
     ti = time;
-#if defined(_WIN32)
+    #if defined(_WIN32)
     {
         struct tm *tm;
         time_t gm_ti, loc_ti;
@@ -44501,14 +44499,15 @@ static int getTimezoneOffset(int64_t time) {
 
         res = (gm_ti - loc_ti) / 60;
     }
-#else
+    #else
     {
         struct tm tm;
         localtime_r(&ti, &tm);
         res = -tm.tm_gmtoff / 60;
     }
-#endif
+    #endif
     return res;
+#endif
 }
 
 #if 0
